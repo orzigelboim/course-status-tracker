@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Course Status Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    h1 {
+      text-align: center;
+    }
+    form {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    input, select, button {
+      padding: 10px;
+      margin: 5px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    .passed {
+      background-color: #90ee90;
+    }
+    .waiting {
+      background-color: #add8e6;
+    }
+    .not-taken {
+      background-color: #ffff99;
+    }
+    #exportBtn {
+      display: block;
+      margin: 20px auto;
+      padding: 10px 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Course Status Tracker</h1>
+  <form id="courseForm">
+    <input type="text" id="courseName" placeholder="Course Name" required />
+    <select id="courseStatus">
+      <option value="passed">Passed</option>
+      <option value="waiting">Waiting</option>
+      <option value="not-taken">Not Taken</option>
+    </select>
+    <button type="submit">Add Course</button>
+  </form>
+
+  <button id="exportBtn">Export to CSV</button>
+
+  <table id="courseTable">
+    <thead>
+      <tr>
+        <th>Course Name</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+
+  <script>
+    const form = document.getElementById('courseForm');
+    const tableBody = document.querySelector('#courseTable tbody');
+    const exportBtn = document.getElementById('exportBtn');
+
+    function loadCourses() {
+      const data = localStorage.getItem('courses');
+      if (data) {
+        const courses = JSON.parse(data);
+        courses.forEach(course => addCourseToTable(course.name, course.status));
+      }
+    }
+
+    function saveCourse(name, status) {
+      const courses = JSON.parse(localStorage.getItem('courses') || '[]');
+      courses.push({ name, status });
+      localStorage.setItem('courses', JSON.stringify(courses));
+    }
+
+    function addCourseToTable(name, status) {
+      const row = document.createElement('tr');
+      row.className = status;
+
+      const nameCell = document.createElement('td');
+      nameCell.textContent = name;
+
+      const statusCell = document.createElement('td');
+      statusCell.textContent = status.replace('-', ' ').toUpperCase();
+
+      row.appendChild(nameCell);
+      row.appendChild(statusCell);
+      tableBody.appendChild(row);
+    }
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const name = document.getElementById('courseName').value.trim();
+      const status = document.getElementById('courseStatus').value;
+
+      if (!name) return;
+
+      saveCourse(name, status);
+      addCourseToTable(name, status);
+
+      form.reset();
+    });
+
+    exportBtn.addEventListener('click', () => {
+      const data = JSON.parse(localStorage.getItem('courses') || '[]');
+      if (data.length === 0) return;
+
+      const csvRows = ["Course Name,Status"];
+      data.forEach(({ name, status }) => {
+        const row = `"${name.replace(/"/g, '""')}","${status.replace(/"/g, '""')}`;
+        csvRows.push(row);
+      });
+
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'courses.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+
+    // Load saved data when page loads
+    window.addEventListener('load', loadCourses);
+  </script>
+</body>
+</html>
