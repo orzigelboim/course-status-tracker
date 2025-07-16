@@ -82,29 +82,30 @@
     <tbody></tbody>
   </table>
 
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
   <script>
+    // TODO: Replace with your Firebase project configuration
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
     const form = document.getElementById('courseForm');
     const tableBody = document.querySelector('#courseTable tbody');
     const exportBtn = document.getElementById('exportBtn');
     const sortBtn = document.getElementById('sortBtn');
 
-    function loadCourses() {
-      const data = localStorage.getItem('courses');
-      if (data) {
-        const courses = JSON.parse(data);
-        courses.forEach((course, index) => addCourseToTable(course, index));
-      }
-    }
-
-    function saveCourses(courses) {
-      localStorage.setItem('courses', JSON.stringify(courses));
-    }
-
-    function getCourses() {
-      return JSON.parse(localStorage.getItem('courses') || '[]');
-    }
-
-    function addCourseToTable(course, index) {
+    function addCourseToTable(course, id) {
       const row = document.createElement('tr');
       row.className = course.status;
 
@@ -113,12 +114,21 @@
         <td>${course.semester}</td>
         <td>${course.status.replace('-', ' ').toUpperCase()}</td>
         <td>
-          <span class="action-btn" onclick="editCourse(${index})">✏️</span>
-          <span class="action-btn" onclick="deleteCourse(${index})">🗑️</span>
+          <span class="action-btn" onclick="editCourse('${id}')">✏️</span>
+          <span class="action-btn" onclick="deleteCourse('${id}')">🗑️</span>
         </td>
       `;
 
       tableBody.appendChild(row);
+    }
+
+    function loadCourses() {
+      db.collection("courses").get().then(snapshot => {
+        tableBody.innerHTML = '';
+        snapshot.forEach(doc => {
+          addCourseToTable(doc.data(), doc.id);
+        });
+      });
     }
 
     form.addEventListener('submit', function(e) {
@@ -129,69 +139,61 @@
 
       if (!name || !semester) return;
 
-      const courses = getCourses();
-      courses.push({ name, semester, status });
-      saveCourses(courses);
-
-      tableBody.innerHTML = '';
-      courses.forEach((course, index) => addCourseToTable(course, index));
-
-      form.reset();
+      db.collection("courses").add({ name, semester, status }).then(() => {
+        loadCourses();
+        form.reset();
+      });
     });
 
-    function deleteCourse(index) {
-      const courses = getCourses();
-      courses.splice(index, 1);
-      saveCourses(courses);
-      refreshTable();
+    function deleteCourse(id) {
+      db.collection("courses").doc(id).delete().then(() => {
+        loadCourses();
+      });
     }
 
-    function editCourse(index) {
-      const courses = getCourses();
-      const course = courses[index];
-      const newName = prompt('Edit Course Name:', course.name);
-      const newSemester = prompt('Edit Semester:', course.semester);
-      const newStatus = prompt('Edit Status (passed, waiting, not-taken):', course.status);
+    function editCourse(id) {
+      db.collection("courses").doc(id).get().then(doc => {
+        const course = doc.data();
+        const newName = prompt('Edit Course Name:', course.name);
+        const newSemester = prompt('Edit Semester:', course.semester);
+        const newStatus = prompt('Edit Status (passed, waiting, not-taken):', course.status);
 
-      if (newName && newSemester && newStatus) {
-        courses[index] = { name: newName, semester: newSemester, status: newStatus };
-        saveCourses(courses);
-        refreshTable();
-      }
-    }
-
-    function refreshTable() {
-      const courses = getCourses();
-      tableBody.innerHTML = '';
-      courses.forEach((course, index) => addCourseToTable(course, index));
+        if (newName && newSemester && newStatus) {
+          db.collection("courses").doc(id).set({
+            name: newName,
+            semester: newSemester,
+            status: newStatus
+          }).then(() => loadCourses());
+        }
+      });
     }
 
     sortBtn.addEventListener('click', () => {
-      const courses = getCourses();
-      courses.sort((a, b) => a.status.localeCompare(b.status));
-      saveCourses(courses);
-      refreshTable();
+      db.collection("courses").orderBy("status").get().then(snapshot => {
+        tableBody.innerHTML = '';
+        snapshot.forEach(doc => addCourseToTable(doc.data(), doc.id));
+      });
     });
 
     exportBtn.addEventListener('click', () => {
-      const data = getCourses();
-      if (data.length === 0) return;
+      db.collection("courses").get().then(snapshot => {
+        const csvRows = ["Course Name,Status"];
+        snapshot.forEach(doc => {
+          const { name, status } = doc.data();
+          csvRows.push(`"${name.replace(/"/g, '""')}","${status.replace(/"/g, '""')}"`);
+        });
 
-      const csvRows = ["Course Name,Semester,Status"];
-      data.forEach(({ name, semester, status }) => {
-        csvRows.push(`"${name.replace(/"/g, '""')}","${semester.replace(/"/g, '""')}","${status.replace(/"/g, '""')}"`);
+        const csvContent = '\uFEFF' + csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'courses.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
       });
-
-      const csvContent = csvRows.join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'courses.csv';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
     });
 
     window.addEventListener('load', loadCourses);
